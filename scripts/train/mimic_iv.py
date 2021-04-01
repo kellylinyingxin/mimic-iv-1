@@ -4,6 +4,16 @@ import numpy as np
 from tensorflow import keras
 from tensorflow.keras import layers
 
+patient_record_feature_description = {
+    'target': tf.io.FixedLenFeature([], tf.int64),
+    'x1': tf.io.FixedLenFeature([], tf.int64),
+    'x2': tf.io.FixedLenFeature([], tf.float),
+    'x3': tf.io.FixedLenFeature([], tf.float),
+    'x4': tf.io.FixedLenFeature([], tf.float),
+    'x5': tf.io.FixedLenFeature([], tf.float),
+    'x6': tf.io.FixedLenFeature([], tf.float),
+}
+
 # Create model
 
 model = keras.Sequential([
@@ -60,7 +70,21 @@ def convert_csv_to_tfrecords():
             tf_example = patient_record_example(row)
             writer.write(tf_example.SerializeToString())
 
+def _parse_patient_record_function(example_proto):
+    # Parse the input tf.Example proto using the dictionary above
+    example = tf.io.parse_single_example(example_proto, patient_record_feature_description)
+    x = tf.stack([example['x1'],
+                  example['x2'],
+                  example['x3'],
+                  example['x4'],
+                  example['x5'],
+                  example['x6']],axis=0)
+    y = example['target']
+    return x,y
+
 def create_dataset(filepath):
+    patient_record_dataset = tf.data.TFRecordDataset(filepath)
+    parsed_patient_record_dataset = patient_record_dataset.map(_parse_patient_record_function)
 
 
 def train(project_directory, model_directory, epochs, steps_per_epoch, validation_steps):
@@ -72,12 +96,14 @@ def train(project_directory, model_directory, epochs, steps_per_epoch, validatio
 
     # Add callbacks
     tensorboard_cb = tf.keras.callbacks.TensorBoard('~/logs')
+
     checkpoint_cb = tf.keras.callbacks.ModelCheckpoint('~/weights.hdf5',
                                                        save_weights_only=True,
                                                        save_best_only=True,
                                                        save_freq='epoch',
                                                        monitor='val_loss',
                                                        mode='auto')
+
     early_stopping_cb = keras.callbacks.EarlyStopping(patience=10,
                                                       min_delta=0.001,
                                                       restore_best_weights=True)
